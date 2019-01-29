@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="supportfiles/jquery.min.js"></script>
+<!-- Bootstrap core CSS -->
+<link rel="stylesheet" href="supportfiles/bootstrap.min.css">
+<link href="supportfiles/dashboard.css" rel="stylesheet">
+<link href="supportfiles/jquery-ui.min.css" rel="stylesheet">
+<link href="supportfiles/jquery-ui.structure.min.css" rel="stylesheet">
+<link href="supportfiles/jquery-ui.theme.min.css" rel="stylesheet">
+<!-- custom style for SEDE -->
+<link href="supportfiles/sede.css" rel="stylesheet">
+<script src="supportfiles/bootstrap.min.js"></script>
+<script
+	src="http://maps.google.com/maps/api/js?key=AIzaSyBis1Boyn_1lnN34CojAkzm2k50UJ7UBA0&libraries=drawing">
+	
+</script>
+<script charset="utf-8" src="supportfiles/d3.min.js"
+	type="text/javascript"></script>
+<script charset="utf-8" src="supportfiles/map_style.js"
+	type="text/javascript"></script>
+<script charset="utf-8" src="supportfiles/jquery-ui.min.js"
+	type="text/javascript"></script>
+<script charset="utf-8" src="supportfiles/d3-tip.min.js"
+	type="text/javascript"></script>
+<script charset="utf-8" src="supportfiles/moment.js"
+	type="text/javascript"></script>
+<script src="supportfiles/d3.layout.cloud.js"></script>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="text/javascript">
+	var gmap, coords = [], convtype = null;
+	function initialize() {
+		gmap = new google.maps.Map(d3.select("#map").node(), {
+			zoom : 16,
+			center : new google.maps.LatLng(41.15, -81.36),
+			mapTypeId : google.maps.MapTypeId.ROADMAP
+		});
+	}
+
+	function upload() {
+		$('#trbutton').prop("disabled", true);
+		$('#trdwnldbutton').prop("disabled", true);
+		var upload = exp.uploadDataFile();
+		if (upload.length == 0) {
+			alert('No file uploaded');
+			return;
+		}
+		var dat = JSON.parse(upload);
+		if (dat.hasOwnProperty('error')) {
+			alert(dat.error);
+			return;
+		} else {
+			$('#trbutton').prop("disabled", false);
+			//clear existing markers
+			coords.forEach(function(crd) {
+				crd.setMap(null);
+			});
+			coords = [];
+			//create markers
+			gmap.setCenter({
+				lat : dat.coordinates[0][1],
+				lng : dat.coordinates[0][0]
+			});
+			for (var i = 0; i < dat.coordinates.length; i++) {
+				var spoint = new google.maps.Marker(
+						{
+							position : new google.maps.LatLng(
+									dat.coordinates[i][1],
+									dat.coordinates[i][0]),
+							map : gmap,
+							draggable : false,
+							icon : {
+								scaledSize : new google.maps.Size(30, 30),
+								url : 'http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png'
+							}
+						});
+				spoint.set("id", i);
+				spoint.set("vul", false);
+				coords.push(spoint);
+			}
+		}
+	}
+
+	function transform() {
+		var transformedCoordinates = JSON
+				.parse(exp.getTransformedCoordinates());
+		gmap.setCenter({
+			lat : transformedCoordinates[0][1],
+			lng : transformedCoordinates[0][0]
+		});
+		for (i = 0; i < coords.length; i++) {
+			coords[i].setPosition({
+				lat : transformedCoordinates[i][1],
+				lng : transformedCoordinates[i][0]
+			});
+		}
+		$('#trdwnldbutton').prop("disabled", false);
+		$('#key_add').val("");
+	}
+
+	function downloadTransformed() {
+		if(exp.isOutputFolderSet()=='N'){
+			alert("Please set the output folder first");
+			return ;
+		}
+		if ($('#key_add').val().trim().length == 0) {
+			//populate the keys select
+			var arr = [ "" ];
+			var keys = JSON.parse(exp.getAllKeys());
+			d3.select("#exist_key_select").selectAll('option').remove();
+			d3.select("#exist_key_select").selectAll('option').data(
+					arr.concat(keys)).enter().append('option').text(
+					function(d) {
+						return d;
+					}).property("value", function(d) {
+				return d;
+			});
+			$('#new_key_modal').modal();
+		} else {
+			downloadTransformedFile();
+		}
+	}
+
+	function updateKey() {
+		$('#key_add').val($('#exist_key_select').val());
+	}
+
+	function downloadTransformedFile() {
+		var file = prompt("Please enter filename", "");
+		if (file != null) {
+			alert(exp.downloadTransformed(file, $('#key_add').val()));
+		}
+	}
+
+	function convertAndDownloadTransformed() {
+		alert(exp.convertAndDownloadTransformed());
+	}
+
+	function checkKey() {
+		if ($('#key_add').val().trim().length == 0) {
+			return;
+		}
+		$('#new_key_modal').modal("hide");
+		downloadTransformedFile();
+	}
+	
+	function cleanupmodal() {
+		$('#key_add').val("");
+	}
+
+	function convertAndDownload(elem) {
+		var buttonid = elem.id;
+		if (buttonid == 'shapeb')
+			convtype = 'shape';
+		else
+			convtype = 'raster';
+		//load the keys first
+		var keys = JSON.parse(exp.getAllKeys());
+		d3.select("#key_select").selectAll('option').remove();
+		d3.select('#key_select').selectAll('option').data(keys).enter().append(
+				'option').property('value', function(d) {
+			return d;
+		}).text(function(d) {
+			return d;
+		});
+		$('#choose_key_modal').modal();
+	}
+
+	function downloadOptions() {
+		if(exp.isOutputFolderSet()=='N'){
+			alert("Please set the output folder first");
+			return ;
+		}
+		$('#choose_key_modal').modal("hide");
+		if ($('#key_select').has('option').length > 0) {
+			var key = $('#key_select').val();
+			var file = prompt("Please enter filename", "");
+			if (file != null) {
+				if (convtype == 'shape')
+					alert(exp.downloadTransformedShape(file, key));
+				else
+					alert(exp.downloadTransformedRaster(file, key));
+			}
+		}
+	}
+	
+	function outputfolder(){
+		var ouputfolder=exp.setOutputFolder();
+		if(ouputfolder){
+			alert('output folder set');
+		}
+	}
+</script>
+</head>
+<body style="background-color: #98AFC7;" onload="initialize()">
+	<div class="container-fluid contfill">
+		<div class="row contfill">
+			<!-- This is for the map section -->
+			<div class="col-md-7 contfill">
+				<!-- The map div. Should be 75% of the page -->
+				<div class="row" style="min-height: 75%; height: 75%">
+					<div id="map"></div>
+				</div>
+			</div>
+			<!-- This is for the control section -->
+			<div class="col-md-5 contfill">
+				<div class="col-md-12 " style="min-height: 75%; height: 75%">
+					<!-- Upload div -->
+					<div class="row bg-light rounded"
+						style="min-height: 35%; height: 35%;">
+						<div class="col-md-12 contfill">
+							<div class="row" style="min-height: 45%; height: 45%;">
+								<div class="col-md-4" style="margin-top: 7%">
+									<button type="button" class="btn btn-primary"
+										onclick="upload()">Upload</button>
+								</div>
+								<div class="col-md-4" style="margin-top: 7%">
+									<button type="button" class="btn btn-primary" id="trbutton"
+										onclick="transform()" disabled>Transform</button>
+								</div>
+								<div class="col-md-4" style="margin-top: 7%">
+									<button type="button" class="btn btn-primary"
+										id="trdwnldbutton" onclick="downloadTransformed()" disabled>Download</button>
+								</div>
+							</div>
+							<div class="row" style="min-height: 45%; height: 45%;">
+								<div class="col-md-4" style="margin-top: 7%">
+									<button type="button" class="btn btn-primary"
+										 onclick="outputfolder()">Output Folder</button>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="row bg-light rounded"
+						style="min-height: 24%; height: 24%; margin-top: 1%">
+						<div class="col-md-6" style="margin-top: 7%">
+							<button id='shapeb' type="button" class="btn btn-primary"
+								onclick="convertAndDownload(this)">ConvertTransformedShape</button>
+						</div>
+						<div class="col-md-6" style="margin-top: 7%">
+							<button id='rasterb' type="button" class="btn btn-primary"
+								onclick="convertAndDownload(this)">ConvertTransformedRaster</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!--Use modals-->
+		<div id="new_key_modal" class="modal fade" role="dialog">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<button type="button" class="close" data-dismiss="modal"
+							onclick="cleanupmodal()">&times;</button>
+						<h4 class="modal-title">Add new Key</h4>
+					</div>
+					<div class="modal-body">
+						<div class="row">
+							<div class="col-md-6">
+								<div class="col-md-3">
+									<b>Key:</b>
+								</div>
+								<div class="col-md-9">
+									<input type="text" id="key_add" class="form-control">
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="col-md-5">
+									<b>Existing:</b>
+								</div>
+								<div class="col-md-7">
+									<select id="exist_key_select" class="form-control"
+										onchange="updateKey()">
+									</select>
+								</div>
+							</div>
+						</div>
+						<br>
+						<div class="row">
+							<div class="col-md-offset-3 col-md-5">
+								<button type="button" class="btn btn-primary"
+									onclick="checkKey()">Add</button>
+							</div>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-default" data-dismiss="modal"
+							onclick="cleanupmodal()">Close</button>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div id="choose_key_modal" class="modal fade" role="dialog">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<button type="button" class="close" data-dismiss="modal">&times;</button>
+						<h4 class="modal-title">Choose Key</h4>
+					</div>
+					<div class="modal-body">
+						<div class="row">
+							<div class="col-md-7">
+								<select id="key_select" class="form-control">
+								</select>
+							</div>
+							<div class="col-md-5">
+								<button type="button" class="btn btn-primary"
+									onclick="downloadOptions()">Select</button>
+							</div>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</body>
+</html>
